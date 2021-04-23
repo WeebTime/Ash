@@ -36,8 +36,7 @@ def afk(update, context):
     REDIS.set(f'afk_time_{update.effective_user.id}', start_afk_time)
     fname = update.effective_user.first_name
     try:
-        update.effective_message.reply_text(
-            "{} is now Away!".format(fname))
+        update.effective_message.reply_text("{} is now away!{}".format(fname, notice))
     except BadRequest:
         pass
 
@@ -70,9 +69,11 @@ def reply_afk(update, context):
     userc = update.effective_user
     userc_id = userc.id
     if message.entities and message.parse_entities(
-        [MessageEntity.TEXT_MENTION, MessageEntity.MENTION]):
+        [MessageEntity.TEXT_MENTION, MessageEntity.MENTION]
+    ):
         entities = message.parse_entities(
-            [MessageEntity.TEXT_MENTION, MessageEntity.MENTION])
+            [MessageEntity.TEXT_MENTION, MessageEntity.MENTION]
+        )
 
         chk_users = []
         for ent in entities:
@@ -84,27 +85,24 @@ def reply_afk(update, context):
                     return
                 chk_users.append(user_id)
 
-            elif ent.type == MessageEntity.MENTION:
-                user_id = get_user_id(message.text[ent.offset:ent.offset +
-                                                   ent.length])
-                if not user_id:
-                    # Should never happen, since for a user to become AFK they must have spoken. Maybe changed username?
+            elif ent.type != MessageEntity.MENTION:
                     return
 
-                if user_id in chk_users:
-                    return
-                chk_users.append(user_id)
-
-                try:
-                    chat = context.bot.get_chat(user_id)
-                except BadRequest:
-                    print("Error: Could not fetch userid {} for AFK module".
-                          format(user_id))
-                    return
-                fst_name = chat.first_name
-
-            else:
+            user_id = get_user_id(message.text[ent.offset : ent.offset + ent.length])
+            if not user_id:
+                # Should never happen, since for a user to become AFK they must have spoken. Maybe changed username?
                 return
+
+            if user_id in chk_users:
+                return
+            chk_users.append(user_id)
+            
+            try:
+                chat = bot.get_chat(user_id)
+            except BadRequest:
+                print("Error: Could not fetch userid {} for AFK module".format(user_id))
+                return
+             fst_name = chat.first_name
 
             check_afk(update, context, user_id, fst_name, userc_id)
 
@@ -117,15 +115,13 @@ def reply_afk(update, context):
 def check_afk(update, context, user_id, fst_name, userc_id):
     if is_user_afk(user_id):
         reason = afk_reason(user_id)
+        if int(userc_id) == int(user_id):
+            return
         since_afk = get_readable_time((time.time() - float(REDIS.get(f'afk_time_{user_id}'))))
         if reason == "none":
-            if int(userc_id) == int(user_id):
-                return
             res = "{} is AFK!\nSince: {}".format(fst_name, since_afk)
             update.effective_message.reply_text(res)
         else:
-            if int(userc_id) == int(user_id):
-                return
             res = "{} is AFK! Says it's because of:\n{}\nSince: {}".format(fst_name, reason, since_afk)
             update.effective_message.reply_text(res)
 
@@ -159,7 +155,9 @@ __help__ = """
 
 
 AFK_HANDLER = DisableAbleCommandHandler("afk", afk)
-AFK_REGEX_HANDLER = MessageHandler(Filters.regex("(?i)brb"), afk)
+AFK_REGEX_HANDLER = DisableAbleMessageHandler(
+    Filters.regex(r"^(?i)brb(.*)$"), afk, friendly="afk",
+)
 NO_AFK_HANDLER = MessageHandler(Filters.all & Filters.group, no_longer_afk)
 AFK_REPLY_HANDLER = MessageHandler(Filters.all & Filters.group, reply_afk)
 
